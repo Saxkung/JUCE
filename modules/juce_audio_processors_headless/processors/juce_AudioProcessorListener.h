@@ -80,6 +80,8 @@ public:
         bool programChanged           = false;
         /** @see withNonParameterStateChanged */
         bool nonParameterStateChanged = false;
+        /** @see withBusesLayoutChanged */
+        bool busesLayoutChanged       = false;
 
         /** Indicates that the AudioProcessor's latency has changed.
 
@@ -122,6 +124,33 @@ public:
             @see nonParameterStateChanged
         */
         [[nodiscard]] ChangeDetails withNonParameterStateChanged (bool b) const noexcept { return with (&ChangeDetails::nonParameterStateChanged, b); }
+
+        /*  S-Upmix / U224 (docs/UNKNOWNS.md): NOT an upstream JUCE field --
+            added locally because JUCE has no way at all for a plugin to
+            ask its host to re-check bus/IO configuration (VST3's own
+            RestartFlags::kIoChanged has no path from ChangeDetails through
+            to IComponentHandler::restartComponent() anywhere in JUCE,
+            confirmed by reading every restartComponent/kIoChanged call
+            site in the framework). Some real hosts (REAPER, confirmed
+            live) never re-query a plugin's bus support after the first
+            negotiation UNLESS the plugin itself sends kIoChanged; JUCE
+            silently cannot do that at all, which is indistinguishable from
+            a plugin bug from the host's side. The underlying VST3 plumbing
+            (ComponentRestarter::restart(), juce_VST3Common.h) already
+            passes through whatever flag it's given correctly -- this is
+            genuinely just a missing bit in ChangeDetails, not a deeper
+            defect, which is why the fix is this one field plus a few
+            lines in the VST3 client's audioProcessorChanged() rather than
+            a structural change.
+
+            Indicates that the set of bus layouts the AudioProcessor is
+            willing to accept has changed (or that the host should simply
+            reconsider its current choice), asking the host to re-run its
+            own bus negotiation.
+
+            @see busesLayoutChanged
+        */
+        [[nodiscard]] ChangeDetails withBusesLayoutChanged (bool b) const noexcept { return with (&ChangeDetails::busesLayoutChanged, b); }
 
         /** Returns the default set of flags that will be used when
             AudioProcessor::updateHostDisplay() is called with no arguments.

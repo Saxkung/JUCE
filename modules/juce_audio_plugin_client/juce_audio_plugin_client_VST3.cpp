@@ -1560,6 +1560,20 @@ public:
         if (details.nonParameterStateChanged)
             flags |= pluginShouldBeMarkedDirtyFlag;
 
+        // S-Upmix / U224 (docs/UNKNOWNS.md): NOT an upstream JUCE field -- see
+        // ChangeDetails::withBusesLayoutChanged's own declaration comment
+        // (juce_AudioProcessorListener.h) for the full story. Deliberately
+        // NOT covered by the inSetupProcessing mask below: a caller asking
+        // for this from inside prepareToPlay() would have it silently
+        // dropped by that mask (the exact reason a caller must defer this
+        // specific request to outside the setupProcessing() call, e.g. via
+        // Timer::callAfterDelay -- see PluginProcessor.cpp's own use of it),
+        // but a caller correctly deferring it, as intended, is never inside
+        // setupProcessing() when this runs, so the mask never needs to
+        // touch this flag either way.
+        if (details.busesLayoutChanged)
+            flags |= Vst::kIoChanged;
+
         if (inSetupProcessing)
             flags &= Vst::kLatencyChanged;
 
