@@ -56,6 +56,11 @@ struct DxgiAdapter : public ReferenceCountedObject
 
     static Ptr create (ComSmartPtr<ID2D1Factory2>, ComSmartPtr<IDXGIAdapter1>);
 
+    // S-Upmix local patch (U245, docs/UNKNOWNS.md): see the .cpp definition
+    // for why this exists -- releasing these devices for real can hang
+    // inside the GPU driver.
+    ~DxgiAdapter();
+
     bool uniqueIDMatches (ReferenceCountedObjectPtr<DxgiAdapter> other) const;
 
     LUID getAdapterUniqueID() const;

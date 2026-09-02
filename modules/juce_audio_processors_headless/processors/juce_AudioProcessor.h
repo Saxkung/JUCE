@@ -631,6 +631,21 @@ public:
     */
     bool setChannelLayoutOfBus (bool isInput, int busIndex, const AudioChannelSet& layout);
 
+    /** Changes the layout that a plug-in wrapper will advertise on the next
+        host I/O query without changing the processor's active layout.
+
+        This is intended for a plug-in-initiated dynamic-I/O request. The
+        caller must notify the wrapper/host after this succeeds. The host
+        remains authoritative and applies the real layout later, while the
+        processor is inactive, through setBusesLayout.
+
+        Unlike setChannelLayoutOfBus, this method is safe to call while the
+        processor is active because it does not change channel counts or call
+        processorLayoutsChanged.
+    */
+    bool setPreferredChannelLayoutOfBus (bool isInput, int busIndex,
+                                         const AudioChannelSet& layout);
+
     /** Provides the number of channels of the bus with a given index and direction.
 
         If the index, direction combination is invalid then this will return zero.

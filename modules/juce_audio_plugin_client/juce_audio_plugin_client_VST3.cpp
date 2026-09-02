@@ -2409,10 +2409,23 @@ private:
                         owner.plugFrame->resizeView (&owner, &newSize);
                         auto host = detail::PluginUtilities::getHostType();
 
+                        // S-Upmix local patch (U230, docs/UNKNOWNS.md):
+                        // isReaper() added to the non-Mac branch too (JUCE
+                        // upstream only lists it for macOS). REAPER on
+                        // Windows applies the window resizes resulting from
+                        // resizeView() on its own asynchronous schedule, so
+                        // without this the editor component resizes while
+                        // the child HWND stays at the old size until
+                        // REAPER's onSize() lands -- during a continuous
+                        // corner-drag that desync composites as full-window
+                        // background flashes. Setting our own bounds here,
+                        // synchronously, resizes the child HWND in lockstep
+                        // with the editor; REAPER's later onSize() with the
+                        // same size is then a no-op.
                        #if JUCE_MAC
                         if (host.isWavelab() || host.isReaper() || owner.owner->blueCatPatchwork)
                        #else
-                        if (host.isWavelab() || host.isAbletonLive() || host.isBitwigStudio() || owner.owner->blueCatPatchwork)
+                        if (host.isWavelab() || host.isAbletonLive() || host.isBitwigStudio() || host.isReaper() || owner.owner->blueCatPatchwork)
                        #endif
                             setBounds (editorBounds.withZeroOrigin());
                     }

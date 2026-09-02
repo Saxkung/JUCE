@@ -5071,7 +5071,28 @@ public:
         InvalidateRect (peer.getHWND(), &r, FALSE);
     }
 
-    void performAnyPendingRepaintsNow() override {}
+    // S-Upmix local patch (U230, docs/UNKNOWNS.md): this was a no-op, which
+    // left "paint now" unavailable on the default Windows renderer. A
+    // plugin-initiated live window resize needs to present a complete frame
+    // for the NEW size within the same message dispatch as the resize
+    // itself -- deferring to the next vblank leaves a gap during which the
+    // swap chain holds no frame matching the new geometry, and the host's
+    // own dialog background (REAPER paints #F0F0F0) composites through as a
+    // full-window flash (captured/measured on a live REAPER corner-drag).
+    // Mirrors GDIRenderContext::performAnyPendingRepaintsNow() in spirit:
+    // pull the current OS update region, then render and present
+    // immediately. An empty or not-ready region safely falls back to the
+    // normal vblank path via handleDirect2DPaint()'s own startFrame guard.
+    void performAnyPendingRepaintsNow() override
+    {
+        if (! peer.getComponent().isVisible())
+            return;
+
+        handlePaintMessage();
+
+        if (std::exchange (schedulePaintOnVblank, false))
+            handleDirect2DPaint();
+    }
 
     Image createSnapshot() override
     {

@@ -121,7 +121,20 @@ bool AudioProcessor::setBusesLayout (const BusesLayout& arr)
           && arr.outputBuses.size() == getBusCount (false));
 
     if (arr == getBusesLayout())
+    {
+        // A wrapper may be confirming (or rejecting in favour of) the
+        // already-active arrangement after a plug-in initiated preferred-
+        // layout request. Keep the wrapper-facing preference synchronized
+        // with the host-confirmed arrangement even when no active layout
+        // mutation is necessary.
+        for (int i = 0; i < getBusCount (true); ++i)
+            if (auto* bus = getBus (true, i); bus != nullptr && bus->isEnabled())
+                bus->lastLayout = arr.getChannelSet (true, i);
+        for (int i = 0; i < getBusCount (false); ++i)
+            if (auto* bus = getBus (false, i); bus != nullptr && bus->isEnabled())
+                bus->lastLayout = arr.getChannelSet (false, i);
         return true;
+    }
 
     auto copy = arr;
 
@@ -206,6 +219,29 @@ bool AudioProcessor::setChannelLayoutOfBus (bool isInputBus, int busIndex, const
     }
 
     jassertfalse;  // busIndex parameter is invalid
+    return false;
+}
+
+bool AudioProcessor::setPreferredChannelLayoutOfBus (bool isInputBus, int busIndex,
+                                                      const AudioChannelSet& layout)
+{
+    if (auto* bus = getBus (isInputBus, busIndex))
+    {
+        const auto layouts = bus->getBusesLayoutForLayoutChangeOfBus (layout);
+
+        if (layouts.getChannelSet (isInputBus, busIndex) == layout)
+        {
+            // Deliberately update only the wrapper-facing preference. The
+            // active layout/channel count belongs to the host until it stops
+            // processing and calls setBusArrangements()/setBusesLayout().
+            bus->lastLayout = layout;
+            return true;
+        }
+
+        return false;
+    }
+
+    jassertfalse;
     return false;
 }
 

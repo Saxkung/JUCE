@@ -97,6 +97,51 @@ auto DxgiAdapter::create (ComSmartPtr<ID2D1Factory2> d2dFactory,
     return result;
 }
 
+/*  S-Upmix local patch (U245, docs/UNKNOWNS.md): a live report -- inserting
+    S-Upmix in REAPER, then closing REAPER, leaves REAPER's own process
+    resident and burning heavy CPU; in Cubase the same insert-then-close
+    hangs the host outright -- reproduced with tools/relifecycle's new part
+    H (a real windowed editor: open -> animate -> resize -> close -> destroy
+    the plugin instance), with only ONE instance ever inserted. The
+    watchdog's captured stack (SuspendThread+GetThreadContext on the main
+    thread, resolved against a pre-captured module table -- see part H's
+    own comment for why raw address resolution, not SymFromAddr, is used
+    here) put the main thread stuck inside amdxx64.dll (the AMD D3D11
+    user-mode driver), reached through ~17 frames of d3d11.dll, itself
+    reached from JUCE's own Direct2D code in S-Upmix.vst3 -- not anywhere
+    in S-Upmix's own translated DSP code. This fires once the LAST
+    reference to the shared DxgiAdapters/DirectX singleton drops (which, in
+    the reproduction, happened to land right after the plugin instance
+    itself was destroyed, not the window/editor destroyed earlier in the
+    same sequence -- consistent with some other still-alive Direct2D-backed
+    resource, e.g. a cached Image, holding the second-to-last reference).
+
+    This is a known class of real-world bug: some GPU drivers (confirmed
+    here: AMD's, on a hybrid AMD dGPU + Intel iGPU laptop) can hang
+    releasing a D3D11/D2D device for reasons outside any application's
+    control. The standard mitigation -- used by other audio plugins that
+    hit the same class of driver bug -- is to never actually let the
+    device's ref count reach zero mid-session: AddRef() here, in the
+    adapter's own destructor, permanently pins each COM object's ref count
+    above zero BEFORE the member ComSmartPtrs below run their own
+    destructors (which still decrement, just never reach the real
+    Release()/teardown path the driver hangs in). The OS reclaims every GPU
+    handle unconditionally when the process actually exits -- the only
+    place that unconditional reclaim needs to happen at all -- so this only
+    ever costs a deliberately leaked device on the (rare) occasions a
+    display/adapter change makes updateAdapters() recreate the array; it
+    was already unconditionally hanging on ordinary plugin removal before
+    this, which is strictly worse.
+*/
+DxgiAdapter::~DxgiAdapter()
+{
+    if (direct2DDevice != nullptr) direct2DDevice->AddRef();
+    if (dxgiDevice != nullptr)     dxgiDevice->AddRef();
+    if (direct3DDevice != nullptr) direct3DDevice->AddRef();
+    for (auto& output : dxgiOutputs)
+        if (output != nullptr) output->AddRef();
+}
+
 bool DxgiAdapter::uniqueIDMatches (ReferenceCountedObjectPtr<DxgiAdapter> other) const
 {
     if (other == nullptr)
