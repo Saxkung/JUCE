@@ -420,6 +420,9 @@ struct MenuWindow final : public Component, private AsyncUpdater
             auto* targetComponent = options.getTargetComponent();
 
             if (targetComponent == nullptr)
+                targetComponent = Desktop::getInstance().findComponentAt (options.getTargetScreenArea().getCentre());
+
+            if (targetComponent == nullptr)
                 return scaleFactor;
 
             const auto baseScale = getApproximateScaleFactorForComponent (targetComponent);
@@ -449,8 +452,7 @@ struct MenuWindow final : public Component, private AsyncUpdater
             return baseScale * (float) targetScale / (float) selfScale;
         });
 
-        setOpaque (lf.findColour (backgroundColourId).isOpaque()
-                     || ! Desktop::canUseSemiTransparentWindows());
+        setOpaque (false);
 
         const auto initialSelectedId = options.getInitiallySelectedItemId();
 
@@ -513,9 +515,6 @@ struct MenuWindow final : public Component, private AsyncUpdater
     //==============================================================================
     void paint (Graphics& g) override
     {
-        if (isOpaque())
-            g.fillAll (Colours::white);
-
         auto& theme = getLookAndFeel();
         theme.drawPopupMenuBackgroundWithOptions (g, getWidth(), getHeight(), options);
 
@@ -1481,7 +1480,7 @@ public:
     MouseSourceState (MenuWindow& w, MouseInputSource s)
         : window (w), source (s), lastScrollTime (Time::getMillisecondCounter())
     {
-        startTimerHz (20);
+        startTimerHz (60);
     }
 
     ~MouseSourceState() override
@@ -1494,7 +1493,7 @@ public:
         if (! window.windowIsStillValid())
             return;
 
-        startTimerHz (20);
+        startTimerHz (60);
         handleMousePosition (e);
     }
 
@@ -1534,7 +1533,7 @@ private:
         auto localMousePos = window.getLocalPoint (nullptr, globalMousePos);
         auto timeNow = Time::getMillisecondCounter();
 
-        if (timeNow > window.timeEnteredCurrentChildComp + 100
+        if (timeNow > window.timeEnteredCurrentChildComp + 25
              && window.reallyContains (localMousePos, true)
              && window.currentChild != nullptr
              && ! (window.disableMouseMoves || window.isSubMenuVisible()))
@@ -1650,13 +1649,17 @@ private:
         if (window.activeSubMenu == nullptr)
             return false;
 
-        // try to intelligently guess whether the user is moving the mouse towards a currently-open
-        // submenu. To do this, look at whether the mouse stays inside a triangular region that
-        // extends from the last mouse pos to the submenu's rectangle
-
         auto itemScreenBounds = window.activeSubMenu->getScreenBounds();
-        auto subX = (float) itemScreenBounds.getX();
+        const int dx = newGlobalPos.x - lastMousePos.x;
+        const int dy = std::abs (newGlobalPos.y - lastMousePos.y);
+        const bool movingTowardsSubmenuHorizontally = (itemScreenBounds.getX() > window.getX()) ? (dx > 0) : (dx < 0);
 
+        // If the user is moving vertically along the list or moving away from the submenu,
+        // do not suppress item selection!
+        if (! movingTowardsSubmenuHorizontally || dy > std::abs (dx) * 2)
+            return false;
+
+        auto subX = (float) itemScreenBounds.getX();
         auto oldGlobalPos = lastMousePos;
 
         if (itemScreenBounds.getX() > window.getX())
